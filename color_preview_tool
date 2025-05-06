@@ -1,0 +1,362 @@
+
+# color_preview_tool.py
+import tkinter as tk
+from tkinter import ttk, colorchooser, messagebox, filedialog
+import matplotlib.pyplot as plt
+import json
+import os
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.colors as mcolors
+import numpy as np
+
+class ColorPreviewTool:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Real-time Color Gradient Preview")
+        self.root.geometry("1100x700")
+        
+        # Store current gradients
+        self.gradients = []
+        
+        # Maximum number of gradients to show
+        self.max_gradients = 5
+        
+        # Create UI elements
+        self.create_ui()
+        
+        # Initialize empty preview
+        self.update_preview()
+        
+    def create_ui(self):
+        # Main frame
+        main_frame = ttk.Frame(self.root, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Left panel (controls)
+        left_panel = ttk.Frame(main_frame, padding="10", width=300)
+        left_panel.pack(side=tk.LEFT, fill=tk.Y)
+        left_panel.pack_propagate(False)  # Prevent shrinking
+        
+        # Right panel (preview)
+        right_panel = ttk.Frame(main_frame, padding="10")
+        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        
+        # Title
+        ttk.Label(left_panel, text="Color Gradient Creator", font=("Helvetica", 14, "bold")).pack(pady=(0, 20))
+        
+        # Gradient controls frame
+        self.gradient_controls_frame = ttk.Frame(left_panel)
+        self.gradient_controls_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Control buttons
+        buttons_frame = ttk.Frame(left_panel)
+        buttons_frame.pack(fill=tk.X, pady=(20, 5))
+        
+        # Add gradient button
+        ttk.Button(buttons_frame, text="Add Gradient", command=self.add_gradient).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+        
+        # Export button
+        ttk.Button(buttons_frame, text="Export", command=self.export_combination).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+        
+        # Preview frame
+        preview_frame = ttk.LabelFrame(right_panel, text="Real-time Preview", padding=10)
+        preview_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Setup matplotlib figure for preview
+        self.fig = plt.Figure(figsize=(10, 8), dpi=100)
+        self.canvas = FigureCanvasTkAgg(self.fig, master=preview_frame)
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        
+        # Information frame
+        self.info_frame = ttk.LabelFrame(right_panel, text="Combination Information", padding=10)
+        self.info_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        # Add the first two gradients by default
+        self.add_gradient()
+        self.add_gradient()
+        
+    def add_gradient(self):
+        """Add a new gradient to the interface"""
+        if len(self.gradients) >= self.max_gradients:
+            messagebox.showinfo("Maximum Reached", f"Maximum of {self.max_gradients} gradients allowed.")
+            return
+            
+        # Create a frame for this gradient
+        gradient_idx = len(self.gradients)
+        frame = ttk.LabelFrame(self.gradient_controls_frame, text=f"Gradient {gradient_idx + 1}", padding=10)
+        frame.pack(fill=tk.X, pady=5)
+        
+        # Start color
+        start_frame = ttk.Frame(frame)
+        start_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(start_frame, text="Start Color:").pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Use a default reddish color for start
+        start_color = f"#{100+gradient_idx*50:02x}8080"
+        start_var = tk.StringVar(value=start_color)
+        start_entry = ttk.Entry(start_frame, textvariable=start_var, width=8)
+        start_entry.pack(side=tk.LEFT)
+        
+        start_swatch = tk.Canvas(start_frame, width=30, height=20, bg=start_color, highlightthickness=1)
+        start_swatch.pack(side=tk.LEFT, padx=5)
+        
+        def choose_start_color():
+            color = colorchooser.askcolor(initialcolor=start_var.get())[1]
+            if color:
+                start_var.set(color)
+                start_swatch.config(bg=color)
+                self.update_preview()
+                
+        ttk.Button(start_frame, text="Choose...", command=choose_start_color).pack(side=tk.LEFT)
+        
+        # End color
+        end_frame = ttk.Frame(frame)
+        end_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(end_frame, text="End Color:").pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Use a default darker color for end
+        end_color = f"#{20+gradient_idx*10:02x}1010"
+        end_var = tk.StringVar(value=end_color)
+        end_entry = ttk.Entry(end_frame, textvariable=end_var, width=8)
+        end_entry.pack(side=tk.LEFT)
+        
+        end_swatch = tk.Canvas(end_frame, width=30, height=20, bg=end_color, highlightthickness=1)
+        end_swatch.pack(side=tk.LEFT, padx=5)
+        
+        def choose_end_color():
+            color = colorchooser.askcolor(initialcolor=end_var.get())[1]
+            if color:
+                end_var.set(color)
+                end_swatch.config(bg=color)
+                self.update_preview()
+                
+        ttk.Button(end_frame, text="Choose...", command=choose_end_color).pack(side=tk.LEFT)
+        
+        # Add steps slider
+        steps_frame = ttk.Frame(frame)
+        steps_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(steps_frame, text="Steps:").pack(side=tk.LEFT, padx=(0, 10))
+        
+        steps_var = tk.IntVar(value=10)
+        steps_slider = ttk.Scale(steps_frame, from_=2, to=20, orient=tk.HORIZONTAL, 
+                                 variable=steps_var, length=150)
+        steps_slider.pack(side=tk.LEFT, padx=5)
+        steps_label = ttk.Label(steps_frame, textvariable=steps_var)
+        steps_label.pack(side=tk.LEFT, padx=5)
+        
+        # Remove button
+        def remove_gradient():
+            frame.destroy()
+            self.gradients.remove(gradient_data)
+            self.update_preview()
+            
+        remove_btn = ttk.Button(frame, text="Remove", command=remove_gradient)
+        remove_btn.pack(pady=(5, 0))
+        
+        # Store the gradient data
+        gradient_data = {
+            'start_var': start_var,
+            'end_var': end_var,
+            'steps_var': steps_var,
+            'frame': frame,
+            'start_swatch': start_swatch,
+            'end_swatch': end_swatch
+        }
+        self.gradients.append(gradient_data)
+        
+        # Bind changes to update the preview
+        start_var.trace_add("write", lambda *args: self.update_color(gradient_data, 'start'))
+        end_var.trace_add("write", lambda *args: self.update_color(gradient_data, 'end'))
+        steps_var.trace_add("write", lambda *args: self.update_preview())
+        
+        self.update_preview()
+        
+    def update_color(self, gradient_data, which):
+        """Update color swatch and preview when a color changes"""
+        try:
+            if which == 'start':
+                color = gradient_data['start_var'].get()
+                gradient_data['start_swatch'].config(bg=color)
+            else:
+                color = gradient_data['end_var'].get()
+                gradient_data['end_swatch'].config(bg=color)
+            
+            self.update_preview()
+        except tk.TclError:
+            # Invalid color format
+            pass
+        
+    def interpolate_gradient(self, start_hex, end_hex, steps=10):
+        """Interpolate a single gradient between two colors."""
+        try:
+            start_rgb = mcolors.hex2color(start_hex)
+            end_rgb = mcolors.hex2color(end_hex)
+            return [
+                mcolors.to_hex([
+                    start_rgb[i] + (end_rgb[i] - start_rgb[i]) * t / (steps - 1)
+                    for i in range(3)
+                ])
+                for t in range(steps)
+            ]
+        except (ValueError, TypeError):
+            # Return a fallback if color parsing fails
+            return ["#FFFFFF"] * steps
+        
+    def export_combination(self):
+        """Export the current combination of gradients"""
+        if not self.gradients:
+            messagebox.showinfo("No Gradients", "There are no gradients to export.")
+            return
+            
+        # Ask user for file location
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".png",
+            filetypes=[("PNG files", "*.png"), ("All files", "*.*")],
+            title="Export Gradient Combination"
+        )
+        
+        if not file_path:
+            return  # User cancelled
+            
+        try:
+            # Create a high-resolution figure for export
+            export_fig = plt.Figure(figsize=(10, 4), dpi=300)
+            
+            # Extract gradient data
+            gradient_colors = []
+            for gradient in self.gradients:
+                start = gradient['start_var'].get()
+                end = gradient['end_var'].get()
+                steps = gradient['steps_var'].get()
+                gradient_colors.append((start, end, steps))
+                
+            # Layout based on number of gradients
+            num_gradients = len(gradient_colors)
+            
+            # Plot the gradients for export
+            for i, (start, end, steps) in enumerate(gradient_colors):
+                ax = export_fig.add_subplot(1, num_gradients, i+1)
+                
+                try:
+                    gradient = self.interpolate_gradient(start, end, steps)
+                    gradient_array = np.array([mcolors.to_rgb(c) for c in gradient])
+                    gradient_array = gradient_array.reshape(1, len(gradient), 3)
+                    
+                    ax.imshow(gradient_array, aspect='auto')
+                    ax.set_title(f"{start} → {end}", fontsize=10)
+                    ax.axis('off')
+                except ValueError:
+                    ax.text(0.5, 0.5, "Invalid color", ha='center', va='center', fontsize=10)
+                    ax.axis('off')
+                    
+            export_fig.tight_layout()
+            export_fig.savefig(file_path, bbox_inches='tight')
+            
+            # Also save gradient info as JSON
+            if file_path.endswith('.png'):
+                json_path = file_path.replace('.png', '.json')
+            else:
+                json_path = file_path + '.json'
+                
+            export_data = {
+                "gradients": [
+                    {
+                        "start": gradient['start_var'].get(),
+                        "end": gradient['end_var'].get(),
+                        "steps": gradient['steps_var'].get()
+                    }
+                    for gradient in self.gradients
+                ]
+            }
+            
+            with open(json_path, 'w') as f:
+                json.dump(export_data, f, indent=2)
+                
+            messagebox.showinfo("Export Complete", 
+                               f"Exported gradients to:\n{file_path}\n\nGradient data saved to: {json_path}")
+                
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Error exporting gradients: {str(e)}")
+    
+    def update_preview(self):
+        """Update the gradient preview based on current settings"""
+        # Clear the figure and info panel
+        self.fig.clear()
+        
+        for widget in self.info_frame.winfo_children():
+            widget.destroy()
+            
+        if not self.gradients:
+            # No gradients to display
+            self.fig.text(0.5, 0.5, "Add gradients to preview", ha='center', va='center', fontsize=14)
+            self.canvas.draw()
+            return
+            
+        # Extract gradient data
+        gradient_colors = []
+        for gradient in self.gradients:
+            start = gradient['start_var'].get()
+            end = gradient['end_var'].get()
+            steps = gradient['steps_var'].get()
+            gradient_colors.append((start, end, steps))
+            
+        # Layout based on number of gradients
+        num_gradients = len(gradient_colors)
+        
+        # Plot the gradients and add info
+        for i, (start, end, steps) in enumerate(gradient_colors):
+            # Add gradient to plot
+            ax = self.fig.add_subplot(1, num_gradients, i+1)
+            
+            try:
+                gradient = self.interpolate_gradient(start, end, steps)
+                gradient_array = np.array([mcolors.to_rgb(c) for c in gradient])
+                gradient_array = gradient_array.reshape(1, len(gradient), 3)
+                
+                ax.imshow(gradient_array, aspect='auto')
+                ax.set_title(f"Gradient {i+1}", fontsize=12)
+                ax.axis('off')
+                
+                # Add color info to info frame
+                info_frame = ttk.Frame(self.info_frame)
+                info_frame.pack(side=tk.LEFT, fill=tk.Y, expand=True, padx=5)
+                
+                ttk.Label(info_frame, text=f"Gradient {i+1}", font=("Helvetica", 10, "bold")).pack(anchor=tk.W)
+                ttk.Label(info_frame, text=f"Start: {start}").pack(anchor=tk.W)
+                ttk.Label(info_frame, text=f"End: {end}").pack(anchor=tk.W)
+                ttk.Label(info_frame, text=f"Steps: {steps}").pack(anchor=tk.W)
+            except ValueError:
+                # Handle invalid colors
+                ax.text(0.5, 0.5, "Invalid color format", ha='center', va='center', fontsize=10, transform=ax.transAxes)
+                ax.axis('off')
+                
+        # Adjust layout
+        self.fig.tight_layout()
+        self.canvas.draw()
+        
+def main():
+    try:
+        root = tk.Tk()
+        root.title("Real-time Color Gradient Preview")
+        # Set a minimum size to ensure all elements are visible
+        root.minsize(1000, 600)
+        app = ColorPreviewTool(root)
+        
+        print("Real-time Color Gradient Preview Tool")
+        print("====================================")
+        print("- Add up to 5 color gradients")
+        print("- Choose start and end colors")
+        print("- Adjust number of steps")
+        print("- See real-time preview of your gradients")
+        
+        root.mainloop()
+    except Exception as e:
+        print(f"Error starting application: {e}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == "__main__":
+    main()
